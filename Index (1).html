@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html><head><base target="_top"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Circle CBT – Grade 11</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:"Trebuchet MS",Verdana,sans-serif;background:#fff7e6;color:#14213d;min-height:100vh}
+.w{max-width:700px;margin:0 auto;padding:14px}
+.card{background:#fff;border:2px solid #14213d;border-radius:14px;padding:16px;margin-bottom:12px;box-shadow:4px 4px 0 #fca311}
+h1{margin:0 0 4px;font-size:24px}
+input{width:100%;padding:12px;margin:6px 0;border:2px solid #14213d;border-radius:10px;font-size:17px}
+button{background:#14213d;color:#fff;border:0;border-radius:10px;padding:12px 18px;font-size:16px;font-weight:700}
+button.o{background:#fca311;color:#14213d}button:disabled{opacity:.5}
+.bar{display:flex;justify-content:space-between;align-items:center;font-weight:700;gap:8px}
+#tm{font-size:22px}.v{color:#c1121f}
+#nav{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+#nav b{width:34px;height:34px;border:2px solid #14213d;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px}
+#nav b.dn{background:#bde0fe}#nav b.on{background:#fca311}
+#q{user-select:none;-webkit-user-select:none;line-height:1.5}
+#warn{background:#ffe5e5;border:2px solid #c1121f;color:#c1121f;border-radius:10px;padding:10px;margin-bottom:10px;font-weight:700}
+.row{display:flex;justify-content:space-between;gap:8px;margin-top:10px}
+.big{font-size:54px;font-weight:800;text-align:center}
+.err{color:#c1121f;font-weight:700}
+[hidden]{display:none!important}
+</style></head>
+<body><div class="w">
+
+<div id="login" class="card">
+  <h1>⭕ Circle Challenge</h1>
+  <p>Grade 11 Mathematics · 10 short-answer problems · every student gets a different paper.</p>
+  <input id="nm" placeholder="Full name" autocomplete="off">
+  <input id="no" type="number" min="1" max="40" placeholder="Attendance number (1–40)">
+  <input id="tk" placeholder="Class token" autocomplete="off">
+  <p style="font-size:14px">Rules: do not leave this page. Switching apps/tabs 3 times submits your test automatically. Do not refresh.</p>
+  <button id="b" class="o" onclick="go()">Start test</button>
+  <p id="err" class="err"></p>
+</div>
+
+<div id="test" hidden>
+  <div class="card bar"><span>⏱ <span id="tm">--:--</span></span><span class="v">⚠ Violations: <span id="vi">0</span>/3</span></div>
+  <div id="warn" hidden></div>
+  <div class="card">
+    <div id="nav"></div>
+    <div id="q"></div>
+    <input id="a" inputmode="decimal" placeholder="Your answer (number only)" autocomplete="off" oninput="A[S.qs[cur].id]=this.value;mark()">
+    <div class="row"><button onclick="mv(-1)">◀ Prev</button><button id="fin" class="o" onclick="ask()">Submit test</button><button onclick="mv(1)">Next ▶</button></div>
+  </div>
+</div>
+
+<div id="end" class="card" hidden>
+  <h1>Test submitted ✅</h1>
+  <div class="big" id="sc"></div>
+  <p id="msg" style="text-align:center"></p>
+</div>
+</div>
+
+<script>
+let S, A = {}, cur = 0, v = 0, done = false, tmr, last = 0, armed = false;
+const $ = id => document.getElementById(id);
+
+/* ---------- start ---------- */
+function go() {
+  $('err').textContent = ''; $('b').disabled = true;
+  const no = $('no').value;
+  google.script.run.withFailureHandler(e => { $('b').disabled = false; $('err').textContent = 'Connection error. Try again.'; })
+    .withSuccessHandler(r => {
+      $('b').disabled = false;
+      if (r.err) { $('err').textContent = r.err; return; }
+      S = { no: +no, sid: r.sid, qs: r.qs, end: Date.now() + r.left }; v = r.v;
+      $('login').hidden = true; $('test').hidden = false;
+      try { document.documentElement.requestFullscreen(); } catch (e) {}
+      render(); tmr = setInterval(tick, 500); tick();
+      if (v >= 3) fin('VIOLATION');
+    }).start($('nm').value, no, $('tk').value);
+}
+function tick() {
+  const l = Math.max(0, S.end - Date.now()), m = Math.floor(l / 60000), s = Math.floor(l % 60000 / 1000);
+  $('tm').textContent = m + ':' + String(s).padStart(2, '0'); if (l <= 0) fin('TIME');
+}
+function render() {
+  const q = S.qs[cur]; mark();
+  $('q').innerHTML = DG[q.d.t](q.d) + `<p><b>Problem ${cur + 1} of ${S.qs.length}</b></p><p>${q.q}</p>
+  <small>Answer in <b>${q.u}</b>. Numbers only, dot for decimals, round to 2 decimals if needed.</small>`;
+  $('a').value = A[q.id] || ''; $('vi').textContent = v; armed = false; $('fin').textContent = 'Submit test';
+}
+function mark() { $('nav').innerHTML = S.qs.map((x, i) => `<b class="${i == cur ? 'on' : ''} ${A[x.id] ? 'dn' : ''}" onclick="cur=${i};render()">${i + 1}</b>`).join(''); }
+function mv(d) { cur = Math.min(S.qs.length - 1, Math.max(0, cur + d)); render(); }
+function ask() {
+  if (!armed) { armed = true; const n = S.qs.filter(q => !A[q.id]).length; $('fin').textContent = n ? n + ' unanswered – tap again' : 'Tap again to confirm'; return; }
+  fin('MANUAL');
+}
+
+/* ---------- anti-cheat: 3 strikes -> auto-submit ---------- */
+function viol() {
+  if (!S || done) return; const t = Date.now(); if (t - last < 1500) return; last = t;
+  v++; $('vi').textContent = v; google.script.run.report(S.no, S.sid);
+  if (v >= 3) { fin('VIOLATION'); return; }
+  $('warn').hidden = false; $('warn').textContent = `⚠ Warning ${v}/3: you left the test page. At 3 warnings your test is submitted automatically.`;
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) viol(); });
+window.addEventListener('blur', viol);
+['contextmenu', 'copy', 'cut', 'paste'].forEach(e => document.addEventListener(e, x => { if (!done) x.preventDefault(); }));
+
+function fin(reason) {
+  if (done) return; done = true; clearInterval(tmr);
+  const send = () => google.script.run.withFailureHandler(() => setTimeout(send, 2000)).withSuccessHandler(r => {
+    $('test').hidden = true; $('end').hidden = false;
+    if (r.err) { $('sc').textContent = '!'; $('msg').textContent = r.err; return; }
+    $('sc').textContent = r.score;
+    $('msg').textContent = r.ok + ' of 10 correct' + (reason == 'VIOLATION' ? ' · auto-submitted (left the page 3 times)' : reason == 'TIME' ? ' · time is up' : '');
+    if (document.fullscreenElement) document.exitFullscreen();
+  }).submit(S.no, S.sid, A, reason);
+  send();
+}
+
+/* ---------- SVG diagrams ---------- */
+const K = '#14213d', rad = a => a * Math.PI / 180;
+const sv = (i, ic) => `<svg viewBox="0 0 240 180" width="100%" style="max-height:240px;display:block;margin-bottom:8px"><rect width="240" height="180" rx="14" fill="#fff7e6" stroke="${K}" stroke-width="2"/><text x="12" y="28" font-size="22">${ic || ''}</text>${i}</svg>`;
+const tx = (x, y, s, c = K) => `<text x="${x}" y="${y}" font-size="11" font-weight="700" fill="${c}" text-anchor="middle">${s}</text>`;
+const pt = (cx, cy, r, a) => [cx + r * Math.cos(rad(a)), cy - r * Math.sin(rad(a))];
+const ln = (a, b, c, d, col = '#c1121f', w = 2.5, da = '') => `<line x1="${a}" y1="${b}" x2="${c}" y2="${d}" stroke="${col}" stroke-width="${w}" stroke-dasharray="${da}"/>`;
+const ci = (x, y, r, f = '#bde0fe') => `<circle cx="${x}" cy="${y}" r="${r}" fill="${f}" stroke="${K}" stroke-width="1.8"/>`;
+function wedge(cx, cy, r, a0, a1, f, r0 = 0) {
+  const [x0, y0] = pt(cx, cy, r, a0), [x1, y1] = pt(cx, cy, r, a1), [u0, v0] = pt(cx, cy, r0, a0), [u1, v1] = pt(cx, cy, r0, a1), l = a1 - a0 > 180 ? 1 : 0;
+  return `<path d="M${u0} ${v0}L${x0} ${y0}A${r} ${r} 0 ${l} 0 ${x1} ${y1}L${u1} ${v1}${r0 ? `A${r0} ${r0} 0 ${l} 1 ${u0} ${v0}` : ''}Z" fill="${f}" stroke="${K}" stroke-width="1.8"/>`;
+}
+const C = [120, 94];
+const DG = {
+  sector: d => sv(ci(...C, 70, '#e9ecef') + wedge(...C, 70, 0, d.th, '#fca311') + ln(...C, 190, 94, K, 1.5) +
+    tx(C[0] + 36, 108, d.r) + tx(...pt(...C, 34, d.th / 2), d.lab) + (d.arc ? tx(120, 174, d.arc, '#c1121f') : ''), d.ic),
+  pie: d => sv(ci(...C, 70, '#e9ecef') + wedge(...C, 70, 0, d.a, '#e63946') + wedge(...C, 70, d.a, d.a + d.b, '#4cc9f0') +
+    tx(...pt(...C, 42, d.a / 2), d.a + '°', '#fff') + tx(...pt(...C, 46, d.a + d.b / 2), d.b + '°', K) + tx(120, 174, d.arc, '#c1121f'), '🍕'),
+  ann: d => { const r0 = 70 * d.r / d.R; return sv(ci(...C, 70, '#e9ecef') + wedge(...C, 70, 0, d.th, '#2a9d8f', r0) + ln(...C, 190, 94, K, 1.5) +
+    tx(C[0] + r0 / 2, 108, 'r=' + d.r) + tx(C[0] + (70 + r0) / 2 + 4, 84, 'R=' + d.R) + tx(...pt(...C, (70 + r0) / 2, d.th / 2), d.th + '°', '#fff'), d.ic); },
+  tri: d => {
+    const s = 150 / d.c, a = d.a * s, b = d.b * s, x0 = 120 - a / 2, y0 = 94 + b / 2, hy = pt(0, 0, 0, 0), rr = (d.a + d.b - d.c) / 2 * s;
+    const poly = `<polygon points="${x0},${y0} ${x0 + a},${y0} ${x0},${y0 - b}" fill="#ffd166" stroke="${K}" stroke-width="2"/>`;
+    const circ = d.m == 'in' ? ci(x0 + rr, y0 - rr, rr, '#bde0fe') : ci(120, 94, d.c * s / 2, '#d8f3dc');
+    return sv((d.m == 'in' ? poly + circ : circ + poly) + (d.m == 'out' ? `<circle cx="120" cy="94" r="3" fill="#c1121f"/>` + tx(120, 108, 'tower', '#c1121f') : '') +
+      tx(x0 + a / 2, y0 + 14, d.a + ' ' + d.u) + tx(x0 - 14, y0 - b / 2, d.b + ' ' + d.u) + tx(x0 + a / 2 + 18, y0 - b / 2 - 6, d.c + ' ' + d.u), d.m == 'in' ? '⛲' : '📡');
+  },
+  tan1: d => {
+    const s = Math.min(60 / d.r, 200 / (d.d + d.r)), x = d.r * s + 14, y = 94, px = x + d.d * s, ph = Math.acos(d.r / d.d); let o = ci(x, y, d.r * s, '#d8f3dc');
+    for (const g of [-1, 1]) { const t = [x + d.r * s * Math.cos(ph), y + g * d.r * s * Math.sin(ph)]; o += ln(px, y, ...t) + ln(x, y, ...t, '#6c757d', 1.3, '4'); }
+    return sv(o + ln(x, y, px, y, '#6c757d', 1.3, '4') + `<circle cx="${px}" cy="${y}" r="4" fill="#c1121f"/>` + tx(px, y - 10, 'P') + tx(x, y + 4, 'O') +
+      tx(x, y + 22, 'r = ' + d.r + ' m') + tx((x + px) / 2, y + 14, 'd = ' + d.d + ' m'), '🏟️');
+  },
+  tan2: d => {
+    const s = Math.min(210 / (d.d + d.R + d.r), 80 / Math.max(d.R, d.r)), x1 = 10 + d.R * s, x2 = x1 + d.d * s, y = 94, e = d.m == 'ext' ? 1 : -1;
+    const sa = (d.m == 'ext' ? d.R - d.r : d.R + d.r) / d.d, ca = Math.sqrt(1 - sa * sa); let o = ci(x1, y, d.R * s, '#bde0fe') + ci(x2, y, d.r * s, '#ffc8dd'), T1, T2;
+    for (const g of [-1, 1]) {
+      const a = [x1 + d.R * s * sa, y + g * d.R * s * ca], b = [x2 + e * d.r * s * sa, y + e * g * d.r * s * ca]; o += ln(...a, ...b); if (g < 0) { T1 = a; T2 = b; }
+    }
+    return sv(o + ln(x1, y, x2, y, '#6c757d', 1.3, '4') + tx(x1, y + 4, 'R=' + d.R) + tx(x2, y + 4, 'r=' + d.r) + tx((x1 + x2) / 2, y + (d.m == 'ext' ? 16 : -6), d.dl) +
+      tx((T1[0] + T2[0]) / 2, (T1[1] + T2[1]) / 2 - 7, d.ll, '#c1121f'), d.m == 'ext' ? '⚙️' : '🔧');
+  }
+};
+</script>
+</body></html>
